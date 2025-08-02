@@ -1,94 +1,151 @@
-// File: app/page.tsx
-// Bu dosya, sohbet arayüzünü oluşturur ve API ile iletişimi yönetir.
-'use client';
+"use client"; // Bu bileşenin bir istemci bileşeni olduğunu belirtir, çünkü state ve event handler'lar kullanacağız.
 
-import { useChat } from 'ai/react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ProductCard } from '@/components/product-card'; // Yeni bileşeni import et
-import type { Message } from 'ai';
+import { useState, useRef, useEffect, FormEvent } from 'react';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
-// Mesaj verisinin özel veri alanını içerecek şekilde tipini genişlet
-interface CustomMessage extends Message {
-  data?: {
-    product_context?: any;
-  };
+// Mesajların tipini tanımlıyoruz. Her mesajın bir ID'si, rolü (kimin gönderdiği) ve içeriği olacak.
+interface Message {
+  id: string;
+  role: 'user' | 'bot';
+  content: string;
 }
 
-export default function Chat() {
-  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
-    // API isteği bu yola yapılacak (yukarıda düzenlediğimiz dosya)
-    api: '/api/chat',
-    // Vercel AI SDK'nın özel veri alanını işlemesini sağlamak için
-    // gelen yanıtı doğrudan mesaj listesine ekliyoruz.
-    onResponse: (response) => {
-      // Bu fonksiyonu boş bırakarak SDK'nın otomatik akışını devre dışı bırakıyoruz,
-      // çünkü bizim API'miz akış (stream) desteklemiyor.
-      // Yanıt işleme onFinish içinde yapılacak.
-    },
-    onFinish: async (message) => {
-        // onFinish, API'den tam yanıt geldiğinde tetiklenir.
-        // Gelen yanıtı işleyip mesaj listesine ekleyeceğiz.
-    },
-  });
+export default function ChatPage() {
+  // Component'in state'lerini tanımlıyoruz.
+  const [messages, setMessages] = useState<Message[]>([]); // Sohbet mesajlarını tutan dizi.
+  const [input, setInput] = useState(''); // Kullanıcının yazdığı metni tutan state.
+  const [isLoading, setIsLoading] = useState(false); // API'den cevap beklenirken yükleme durumunu yönetir.
 
-  // Mesajları CustomMessage tipine dönüştürerek `data` alanına güvenli erişim sağla
-  const customMessages: CustomMessage[] = messages;
+  // Sohbet alanını otomatik olarak en alta kaydırmak için bir referans oluşturuyoruz.
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+
+  // `messages` dizisi her güncellendiğinde, sohbeti en alta kaydır.
+  useEffect(() => {
+    if (scrollAreaRef.current) {
+      scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
+    }
+  }, [messages]);
+
+  // Form gönderildiğinde çalışacak fonksiyon.
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault(); // Sayfanın yeniden yüklenmesini engelle.
+    if (!input.trim() || isLoading) return; // Boş mesaj veya yükleme sırasında göndermeyi engelle.
+
+    // Kullanıcının mesajını `messages` dizisine ekliyoruz.
+    const userMessage: Message = { id: `user-${Date.now()}`, role: 'user', content: input };
+    setMessages((prev) => [...prev, userMessage]);
+    setInput(''); // Input alanını temizle.
+    setIsLoading(true); // Yükleme durumunu başlat.
+
+    // Bot için bir "yazıyor..." mesajı ekliyoruz.
+    const loadingMessage: Message = { id: `bot-${Date.now()}`, role: 'bot', content: '...' };
+    setMessages((prev) => [...prev, loadingMessage]);
+
+    try {
+      // Kendi backend proxy'mize (/api/chat) istek atıyoruz.
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query: input }),
+      });
+
+      if (!response.ok) {
+        throw new Error('API isteği başarısız oldu');
+      }
+
+      const data = await response.json();
+      const botResponse: Message = { id: `bot-response-${Date.now()}`, role: 'bot', content: data.answer };
+
+      // "yazıyor..." mesajını, API'den gelen gerçek cevapla değiştiriyoruz.
+      setMessages((prev) => prev.map(msg => msg.id === loadingMessage.id ? botResponse : msg));
+
+    } catch (error) {
+      console.error("Mesaj gönderilirken hata oluştu:", error);
+      const errorMessage: Message = { id: `error-${Date.now()}`, role: 'bot', content: 'Üzgünüm, bir hata oluştu. Lütfen tekrar deneyin.' };
+      // "yazıyor..." mesajını hata mesajıyla değiştiriyoruz.
+      setMessages((prev) => prev.map(msg => msg.id === loadingMessage.id ? errorMessage : msg));
+    } finally {
+      setIsLoading(false); // Yükleme durumunu bitir.
+    }
+  };
 
   return (
-    <div className="flex flex-col h-screen bg-background">
-      <header className="bg-primary text-primary-foreground p-4 shadow">
-        <h1 className="text-2xl font-bold">Akıllı Satış Asistanı</h1>
-      </header>
-
-      <main className="flex-1 overflow-hidden">
-        <ScrollArea className="h-full p-4">
-          <div className="max-w-4xl mx-auto space-y-6">
-            {customMessages.length > 0 ? (
-              customMessages.map((m) => (
-                <div key={m.id} className="flex items-start gap-4">
-                  <Avatar>
-                    <AvatarImage src={m.role === 'user' ? '/placeholder-user.jpg' : '/placeholder-logo.svg'} />
-                    <AvatarFallback>{m.role === 'user' ? 'Siz' : 'AI'}</AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 space-y-2">
-                    <p className="font-bold">{m.role === 'user' ? 'Siz' : 'Asistan'}</p>
-                    <div className="prose text-foreground max-w-none whitespace-pre-wrap">
-                      {m.content}
-                    </div>
-                    {/* Eğer mesaj asistandan geldiyse ve ürün bilgisi içeriyorsa, kartı göster */}
-                    {m.role === 'assistant' && m.data?.product_context && (
-                      <ProductCard product={m.data.product_context} />
+    <main className="flex min-h-screen items-center justify-center bg-gray-100 dark:bg-gray-900 p-4">
+      <Card className="w-full max-w-2xl h-[90vh] flex flex-col">
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Avatar className="mr-3">
+              <AvatarImage src="/placeholder-logo.svg" alt="Bot" />
+              <AvatarFallback>AS</AvatarFallback>
+            </Avatar>
+            Akıllı Satış Asistanı
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex-1 overflow-hidden">
+          <ScrollArea className="h-full pr-4" ref={scrollAreaRef}>
+            <div className="space-y-4">
+              {messages.map((message) => (
+                <div
+                  key={message.id}
+                  className={`flex items-end gap-2 ${message.role === 'user' ? 'justify-end' : ''}`}
+                >
+                  {message.role === 'bot' && (
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src="/placeholder-logo.svg" alt="Bot" />
+                      <AvatarFallback>AS</AvatarFallback>
+                    </Avatar>
+                  )}
+                  <div
+                    className={`max-w-[75%] rounded-lg p-3 text-sm ${
+                      message.role === 'user'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-200 dark:bg-gray-800'
+                    }`}
+                  >
+                    {message.content === '...' ? (
+                      <div className="flex items-center space-x-1">
+                        <div className="h-2 w-2 animate-pulse rounded-full bg-gray-400" />
+                        <div className="h-2 w-2 animate-pulse rounded-full bg-gray-400 [animation-delay:0.2s]" />
+                        <div className="h-2 w-2 animate-pulse rounded-full bg-gray-400 [animation-delay:0.4s]" />
+                      </div>
+                    ) : (
+                      message.content
                     )}
                   </div>
+                   {message.role === 'user' && (
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src="/placeholder-user.jpg" alt="User" />
+                      <AvatarFallback>Siz</AvatarFallback>
+                    </Avatar>
+                  )}
                 </div>
-              ))
-            ) : (
-              <div className="text-center text-muted-foreground">
-                <p>Sohbete başlamak için bir mesaj gönderin.</p>
-                <p className="text-sm">Örnek: "bana en ucuz cep telefonunu bul"</p>
-              </div>
-            )}
-          </div>
-        </ScrollArea>
-      </main>
-
-      <footer className="bg-background border-t p-4">
-        <form onSubmit={handleSubmit} className="max-w-4xl mx-auto flex gap-2">
-          <Input
-            value={input}
-            onChange={handleInputChange}
-            placeholder="Bir mesaj yazın..."
-            className="flex-1"
-            disabled={isLoading}
-          />
-          <Button type="submit" disabled={isLoading}>
-            {isLoading ? 'Düşünüyor...' : 'Gönder'}
-          </Button>
-        </form>
-      </footer>
-    </div>
+              ))}
+            </div>
+          </ScrollArea>
+        </CardContent>
+        <CardFooter>
+          <form onSubmit={handleSubmit} className="flex w-full items-center space-x-2">
+            <Input
+              id="message"
+              placeholder="Bir mesaj yazın..."
+              className="flex-1"
+              autoComplete="off"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              disabled={isLoading}
+            />
+            <Button type="submit" disabled={isLoading}>
+              Gönder
+            </Button>
+          </form>
+        </CardFooter>
+      </Card>
+    </main>
   );
 }

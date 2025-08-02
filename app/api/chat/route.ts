@@ -1,65 +1,52 @@
-// File: app/api/chat/route.ts
-// Bu dosya, web arayüzünden gelen istekleri alır ve Python Flask API'sine yönlendirir.
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
+// Bu fonksiyon, Next.js'in Edge Runtime'ında çalışacak şekilde ayarlanmıştır.
+// Bu, Vercel'de daha hızlı ve verimli çalışmasını sağlar.
 export const runtime = 'edge';
 
-// DÜZELTME: API adresini bir ortam değişkeninden al.
-// Eğer ortam değişkeni tanımlı değilse, yerel geliştirme için localhost'a yönlen.
-const PYTHON_API_URL = process.env.PYTHON_API_URL || 'http://localhost:5000/chat';
-
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const { messages } = await req.json();
+    // Frontend'den gelen isteğin içindeki JSON verisini alıyoruz.
+    const { query } = await req.json();
 
-    // Mesaj listesindeki son kullanıcı mesajını al
-    const userMessage = messages[messages.length - 1];
-    if (!userMessage || userMessage.role !== 'user') {
-      return NextResponse.json(
-        { error: 'Geçerli bir kullanıcı mesajı bulunamadı.' },
-        { status: 400 }
-      );
+    // Google Cloud Run API'mizin URL'sini ortam değişkenlerinden (environment variables) güvenli bir şekilde alıyoruz.
+    // Bu URL'yi doğrudan koda yazmak yerine .env.local dosyasından çekeceğiz.
+    const CLOUD_RUN_API_URL = process.env.CLOUD_RUN_API_URL;
+
+    if (!CLOUD_RUN_API_URL) {
+      // Eğer URL tanımlanmamışsa, sunucuda hata mesajı oluşturup geri döndürüyoruz.
+      throw new Error("CLOUD_RUN_API_URL ortam değişkeni tanımlanmamış.");
     }
 
-    // Python Flask API'sine POST isteği gönder
-    const response = await fetch(PYTHON_API_URL, {
+    // Frontend'den aldığımız sorguyu, Google Cloud Run API'mize POST isteği ile gönderiyoruz.
+    const response = await fetch(CLOUD_RUN_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      // Flask API'si 'query' anahtarını bekliyor
-      body: JSON.stringify({ query: userMessage.content }),
+      body: JSON.stringify({ query }), // Gelen sorguyu olduğu gibi iletiyoruz.
     });
 
+    // Eğer Cloud Run API'si bir hata döndürürse, o hatayı yakalayıp frontend'e iletiyoruz.
     if (!response.ok) {
       const errorData = await response.json();
-      // Hata mesajını istemciye daha anlaşılır bir formatta gönder
-      return NextResponse.json(
-        { error: `API Hatası: ${errorData.error || response.statusText}` },
-        { status: response.status }
-      );
+      throw new Error(errorData.error || 'Cloud Run API hatası');
     }
 
-    // Flask API'sinden gelen JSON yanıtını doğrudan istemciye gönder
+    // Cloud Run API'sinden gelen cevabı alıyoruz.
     const data = await response.json();
 
-    // Vercel AI SDK'nın beklediği formatta bir "data" nesnesi ekleyerek yanıtı zenginleştiriyoruz.
-    // Bu, metin olmayan verileri (ürün bilgisi gibi) sohbet akışına eklememizi sağlar.
-    const responsePayload = {
-        role: 'assistant',
-        content: data.answer,
-        data: {
-            product_context: data.product_context
-        }
-    };
+    // Aldığımız cevabı, kendi sitemizin frontend'ine JSON formatında geri döndürüyoruz.
+    return NextResponse.json(data);
 
-    return NextResponse.json(responsePayload);
-
-  } catch (error) {
-    console.error('Next.js API Route Hatası:', error);
-    return NextResponse.json(
-      { error: 'İç sunucu hatası oluştu.' },
-      { status: 500 }
-    );
+  } catch (error: any) {
+    // Herhangi bir hata durumunda, hatayı yakalayıp 500 koduyla birlikte frontend'e bildiriyoruz.
+    console.error("API Route Hatası:", error);
+    return new NextResponse(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
   }
 }
