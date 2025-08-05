@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, FormEvent } from 'react';
-import Link from 'next/link'; // Navigasyon için import
+import Link from 'next/link';
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -9,20 +9,21 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SendHorizontal, Bot, User, Copy, FilePlus2, LayoutGrid } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
-import { ProductCard } from '@/components/product-card'; // ProductCard bileşenini import et
+import { ProductCard } from '@/components/product-card';
+import ReactMarkdown from 'react-markdown'; // Markdown kütüphanesini import et
 
 // Mesaj tip tanımı
 interface Message {
   id: string;
   role: 'user' | 'bot';
   content: string;
-  product_context?: any; // Ürün bilgilerini tutmak için eklendi
+  product_context?: any;
 }
 
 // Örnek soru butonları için arayüz
 const suggestionPrompts = [
-    "stoklardaki en ucuz aspiratör bul .",
-    "stoklardaki en pahalı aspiratör bul.",
+    "stoklardaki en ucuz aspiratörü bul.",
+    "stoklardaki en pahalı aspiratörü bul.",
     "3000 ile 4000 tl arası aspiratörleri bul.",
 ];
 
@@ -31,12 +32,8 @@ export default function ChatPage() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-
-  // DÜZELTME: Session ID'yi saklamak için bir ref oluşturuyoruz.
   const sessionIdRef = useRef<string | null>(null);
 
-  // DÜZELTME: Bu useEffect, sayfa ilk yüklendiğinde sadece bir kez çalışır
-  // ve her sohbet için benzersiz bir kimlik oluşturur/yükler.
   useEffect(() => {
     let sessionId = localStorage.getItem('chat_session_id');
     if (!sessionId) {
@@ -46,7 +43,6 @@ export default function ChatPage() {
     sessionIdRef.current = sessionId;
   }, []);
 
-  // Otomatik kaydırma efekti
   useEffect(() => {
     if (scrollAreaRef.current) {
       const viewport = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
@@ -58,23 +54,19 @@ export default function ChatPage() {
     }
   }, [messages]);
 
-  // Yeni sohbet başlatma fonksiyonu
   const handleNewChat = () => {
     setMessages([]);
-    // Yeni bir sohbet için yeni bir session_id oluştur
     const newSessionId = crypto.randomUUID();
     localStorage.setItem('chat_session_id', newSessionId);
     sessionIdRef.current = newSessionId;
     toast.success("Yeni bir sohbet başlatıldı!");
   }
 
-  // Mesajı panoya kopyalama fonksiyonu
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
     toast.success("Mesaj panoya kopyalandı!");
   };
 
-  // Form gönderme veya öneri butonuna tıklama
   const handleSubmit = async (e: FormEvent, prompt?: string) => {
     e.preventDefault();
     const currentInput = prompt || input;
@@ -94,7 +86,6 @@ export default function ChatPage() {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // DÜZELTME: API isteğine session_id'yi de ekliyoruz.
         body: JSON.stringify({
           query: currentInput,
           session_id: sessionIdRef.current
@@ -104,7 +95,6 @@ export default function ChatPage() {
       if (!response.ok) throw new Error('API isteği başarısız oldu');
 
       const data = await response.json();
-      // Gelen yanıta ürün bilgisini de ekle
       const botResponse: Message = {
         id: `bot-response-${Date.now()}`,
         role: 'bot',
@@ -122,7 +112,6 @@ export default function ChatPage() {
     }
   };
 
-  // Bot için "yazıyor..." animasyon bileşeni
   const TypingIndicator = () => (
     <div className="flex items-center space-x-1 p-2">
       <span className="h-2 w-2 animate-bounce rounded-full bg-slate-400 [animation-delay:-0.3s]" />
@@ -200,11 +189,19 @@ export default function ChatPage() {
                         </Avatar>
                       )}
 
-                      <div className={`relative max-w-[80%] rounded-xl px-4 py-3 text-sm shadow-md ${message.role === 'user' ? 'bg-primary text-primary-foreground rounded-br-none' : 'bg-muted rounded-bl-none'}`}>
-                        {message.content === '...' ? <TypingIndicator /> : <p className="whitespace-pre-wrap">{message.content}</p>}
+                      <div className={`prose dark:prose-invert max-w-full relative rounded-xl px-4 py-3 text-sm shadow-md ${message.role === 'user' ? 'bg-primary text-primary-foreground rounded-br-none' : 'bg-muted rounded-bl-none'}`}>
+                        {message.content === '...' ? <TypingIndicator /> : (
+                          <ReactMarkdown
+                            components={{
+                              // Markdown'daki p etiketlerinin varsayılan margin'ini kaldır
+                              p: ({node, ...props}) => <p className="mb-0" {...props} />
+                            }}
+                          >
+                            {message.content}
+                          </ReactMarkdown>
+                        )}
 
-                        {/* Ürün kartını burada göster */}
-                        {message.role === 'bot' && message.product_context && (
+                        {message.product_context && (
                             <ProductCard product={message.product_context} />
                         )}
 

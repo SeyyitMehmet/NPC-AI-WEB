@@ -1,7 +1,7 @@
 // File: components/product-card.tsx
 // Bu YENİ dosya, ürün bilgilerini göstermek için kullanılır.
 import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from './ui/button';
@@ -33,8 +33,16 @@ export function ProductCard({ product }: { product: Product }) {
     console.error("Teklifler parse edilirken hata oluştu:", error);
   }
 
+  // En ucuz teklifi bul
+  const cheapestOffer = offers
+    .filter(offer => offer.price && offer.price > 0)
+    .sort((a, b) => a.price! - b.price!)[0];
+
+  // Buton için kullanılacak linki belirle: Varsa en ucuz satıcının linki, yoksa genel ürün linki
+  const productLink = cheapestOffer?.offer_url || product.product_url;
+
   return (
-    <Card className="mt-4 bg-secondary">
+    <Card className="mt-4 bg-secondary/50 dark:bg-secondary/20 border-primary/20">
       <CardHeader>
         <CardTitle>{product.product_name || 'Ürün Adı Bulunamadı'}</CardTitle>
         {product.subcategory && <Badge variant="outline">{product.subcategory}</Badge>}
@@ -76,10 +84,10 @@ export function ProductCard({ product }: { product: Product }) {
                 <p className="text-sm text-muted-foreground">Bu ürün için satıcı bilgisi bulunamadı.</p>
             )}
         </div>
-        {product.product_url && (
+        {productLink && (
             <Button asChild className="mt-4">
-                <a href={product.product_url} target="_blank" rel="noopener noreferrer">
-                    Ürünü İncele
+                <a href={productLink} target="_blank" rel="noopener noreferrer">
+                    En Ucuz Satıcıdan İncele
                 </a>
             </Button>
         )}
