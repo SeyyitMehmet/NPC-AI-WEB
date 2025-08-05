@@ -9,19 +9,21 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SendHorizontal, Bot, User, Copy, FilePlus2, LayoutGrid } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
+import { ProductCard } from '@/components/product-card'; // ProductCard bileşenini import et
 
 // Mesaj tip tanımı
 interface Message {
   id: string;
   role: 'user' | 'bot';
   content: string;
+  product_context?: any; // Ürün bilgilerini tutmak için eklendi
 }
 
 // Örnek soru butonları için arayüz
 const suggestionPrompts = [
-    "stoklardaki en ucuz ütüyü bul .",
-    "stoklardaki en pahalı ütüyü bul.",
-    "3000 ile 4000 tl arası ütüleri bul.",
+    "stoklardaki en ucuz aspiratör bul .",
+    "stoklardaki en pahalı aspiratör bul.",
+    "3000 ile 4000 tl arası aspiratörleri bul.",
 ];
 
 export default function ChatPage() {
@@ -102,7 +104,13 @@ export default function ChatPage() {
       if (!response.ok) throw new Error('API isteği başarısız oldu');
 
       const data = await response.json();
-      const botResponse: Message = { id: `bot-response-${Date.now()}`, role: 'bot', content: data.answer };
+      // Gelen yanıta ürün bilgisini de ekle
+      const botResponse: Message = {
+        id: `bot-response-${Date.now()}`,
+        role: 'bot',
+        content: data.answer,
+        product_context: data.product_context
+      };
       setMessages((prev) => prev.map(msg => msg.id === loadingMessage.id ? botResponse : msg));
 
     } catch (error) {
@@ -194,6 +202,11 @@ export default function ChatPage() {
 
                       <div className={`relative max-w-[80%] rounded-xl px-4 py-3 text-sm shadow-md ${message.role === 'user' ? 'bg-primary text-primary-foreground rounded-br-none' : 'bg-muted rounded-bl-none'}`}>
                         {message.content === '...' ? <TypingIndicator /> : <p className="whitespace-pre-wrap">{message.content}</p>}
+
+                        {/* Ürün kartını burada göster */}
+                        {message.role === 'bot' && message.product_context && (
+                            <ProductCard product={message.product_context} />
+                        )}
 
                         {message.role === 'bot' && message.content !== '...' && (
                            <Button onClick={() => handleCopy(message.content)} variant="ghost" size="icon" className="absolute -top-2 -right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity">
