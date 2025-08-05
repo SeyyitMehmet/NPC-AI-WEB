@@ -1,151 +1,206 @@
-"use client"; // Bu bileşenin bir istemci bileşeni olduğunu belirtir, çünkü state ve event handler'lar kullanacağız.
+"use client";
 
 import { useState, useRef, useEffect, FormEvent } from 'react';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import Link from 'next/link'; // Navigasyon için import
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { SendHorizontal, Bot, User, Copy, FilePlus2, LayoutGrid } from 'lucide-react';
+import { toast, Toaster } from 'sonner';
 
-// Mesajların tipini tanımlıyoruz. Her mesajın bir ID'si, rolü (kimin gönderdiği) ve içeriği olacak.
+// Gerekli kütüphane: npm install sonner (eğer yüklü değilse)
+
+// Mesaj tip tanımı
 interface Message {
   id: string;
   role: 'user' | 'bot';
   content: string;
 }
 
-export default function ChatPage() {
-  // Component'in state'lerini tanımlıyoruz.
-  const [messages, setMessages] = useState<Message[]>([]); // Sohbet mesajlarını tutan dizi.
-  const [input, setInput] = useState(''); // Kullanıcının yazdığı metni tutan state.
-  const [isLoading, setIsLoading] = useState(false); // API'den cevap beklenirken yükleme durumunu yönetir.
+// Örnek soru butonları için arayüz
+const suggestionPrompts = [
+    "Bana en popüler ürünleri listele.",
+    "Geçen ayın satış raporunu özetle.",
+    "Yeni bir ürün için pazarlama sloganı önerir misin?",
+];
 
-  // Sohbet alanını otomatik olarak en alta kaydırmak için bir referans oluşturuyoruz.
+export default function ChatPage() {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
-  // `messages` dizisi her güncellendiğinde, sohbeti en alta kaydır.
+  // Otomatik kaydırma efekti
   useEffect(() => {
     if (scrollAreaRef.current) {
-      scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
+      const viewport = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+      if (viewport) {
+        setTimeout(() => {
+          viewport.scrollTop = viewport.scrollHeight;
+        }, 100); 
+      }
     }
   }, [messages]);
 
-  // Form gönderildiğinde çalışacak fonksiyon.
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault(); // Sayfanın yeniden yüklenmesini engelle.
-    if (!input.trim() || isLoading) return; // Boş mesaj veya yükleme sırasında göndermeyi engelle.
+  // Yeni sohbet başlatma fonksiyonu
+  const handleNewChat = () => {
+    setMessages([]);
+    toast.success("Yeni bir sohbet başlatıldı!");
+  }
 
-    // Kullanıcının mesajını `messages` dizisine ekliyoruz.
-    const userMessage: Message = { id: `user-${Date.now()}`, role: 'user', content: input };
+  // Mesajı panoya kopyalama fonksiyonu
+  const handleCopy = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success("Mesaj panoya kopyalandı!");
+  };
+
+  // Form gönderme veya öneri butonuna tıklama
+  const handleSubmit = async (e: FormEvent, prompt?: string) => {
+    e.preventDefault();
+    const currentInput = prompt || input;
+    if (!currentInput.trim() || isLoading) return;
+
+    const userMessage: Message = { id: `user-${Date.now()}`, role: 'user', content: currentInput };
     setMessages((prev) => [...prev, userMessage]);
-    setInput(''); // Input alanını temizle.
-    setIsLoading(true); // Yükleme durumunu başlat.
+    if (!prompt) {
+        setInput('');
+    }
+    setIsLoading(true);
 
-    // Bot için bir "yazıyor..." mesajı ekliyoruz.
     const loadingMessage: Message = { id: `bot-${Date.now()}`, role: 'bot', content: '...' };
     setMessages((prev) => [...prev, loadingMessage]);
 
     try {
-      // Kendi backend proxy'mize (/api/chat) istek atıyoruz.
       const response = await fetch('/api/chat', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ query: input }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: currentInput }),
       });
 
-      if (!response.ok) {
-        throw new Error('API isteği başarısız oldu');
-      }
+      if (!response.ok) throw new Error('API isteği başarısız oldu');
 
       const data = await response.json();
       const botResponse: Message = { id: `bot-response-${Date.now()}`, role: 'bot', content: data.answer };
-
-      // "yazıyor..." mesajını, API'den gelen gerçek cevapla değiştiriyoruz.
       setMessages((prev) => prev.map(msg => msg.id === loadingMessage.id ? botResponse : msg));
 
     } catch (error) {
       console.error("Mesaj gönderilirken hata oluştu:", error);
-      const errorMessage: Message = { id: `error-${Date.now()}`, role: 'bot', content: 'Üzgünüm, bir hata oluştu. Lütfen tekrar deneyin.' };
-      // "yazıyor..." mesajını hata mesajıyla değiştiriyoruz.
+      const errorMessage: Message = { id: `error-${Date.now()}`, role: 'bot', content: 'Üzgünüm, bir hata oluştu.' };
       setMessages((prev) => prev.map(msg => msg.id === loadingMessage.id ? errorMessage : msg));
     } finally {
-      setIsLoading(false); // Yükleme durumunu bitir.
+      setIsLoading(false);
     }
   };
+  
+  // Bot için "yazıyor..." animasyon bileşeni
+  const TypingIndicator = () => (
+    <div className="flex items-center space-x-1 p-2">
+      <span className="h-2 w-2 animate-bounce rounded-full bg-slate-400 [animation-delay:-0.3s]" />
+      <span className="h-2 w-2 animate-bounce rounded-full bg-slate-400 [animation-delay:-0.15s]" />
+      <span className="h-2 w-2 animate-bounce rounded-full bg-slate-400" />
+    </div>
+  );
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gray-100 dark:bg-gray-900 p-4">
-      <Card className="w-full max-w-2xl h-[90vh] flex flex-col">
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <Avatar className="mr-3">
-              <AvatarImage src="/placeholder-logo.svg" alt="Bot" />
-              <AvatarFallback>AS</AvatarFallback>
-            </Avatar>
-            Akıllı Satış Asistanı
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="flex-1 overflow-hidden">
-          <ScrollArea className="h-full pr-4" ref={scrollAreaRef}>
-            <div className="space-y-4">
-              {messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`flex items-end gap-2 ${message.role === 'user' ? 'justify-end' : ''}`}
-                >
-                  {message.role === 'bot' && (
-                    <Avatar className="h-8 w-8">
-                      <AvatarImage src="/placeholder-logo.svg" alt="Bot" />
-                      <AvatarFallback>AS</AvatarFallback>
-                    </Avatar>
-                  )}
-                  <div
-                    className={`max-w-[75%] rounded-lg p-3 text-sm ${
-                      message.role === 'user'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-200 dark:bg-gray-800'
-                    }`}
-                  >
-                    {message.content === '...' ? (
-                      <div className="flex items-center space-x-1">
-                        <div className="h-2 w-2 animate-pulse rounded-full bg-gray-400" />
-                        <div className="h-2 w-2 animate-pulse rounded-full bg-gray-400 [animation-delay:0.2s]" />
-                        <div className="h-2 w-2 animate-pulse rounded-full bg-gray-400 [animation-delay:0.4s]" />
-                      </div>
-                    ) : (
-                      message.content
-                    )}
-                  </div>
-                   {message.role === 'user' && (
-                    <Avatar className="h-8 w-8">
-                      <AvatarImage src="/placeholder-user.jpg" alt="User" />
-                      <AvatarFallback>Siz</AvatarFallback>
-                    </Avatar>
-                  )}
-                </div>
-              ))}
-            </div>
-          </ScrollArea>
-        </CardContent>
-        <CardFooter>
-          <form onSubmit={handleSubmit} className="flex w-full items-center space-x-2">
-            <Input
-              id="message"
-              placeholder="Bir mesaj yazın..."
-              className="flex-1"
-              autoComplete="off"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              disabled={isLoading}
-            />
-            <Button type="submit" disabled={isLoading}>
-              Gönder
+    <div className="flex flex-col h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-blue-100 dark:from-gray-900 dark:via-indigo-950 dark:to-slate-900">
+      <Toaster richColors position="top-right" />
+      
+      <header className="sticky top-0 z-10 flex items-center justify-between p-4 border-b bg-background/80 backdrop-blur-sm">
+        <div className="flex items-center gap-3">
+          <Bot className="h-7 w-7 text-primary" />
+          <h1 className="text-xl font-semibold tracking-tight">NPC-AI SATIŞ ASİSTANI</h1>
+        </div>
+        
+        <nav className="hidden md:flex items-center gap-2">
+            <Button variant="ghost" asChild>
+            <Link href="/">Sohbet</Link>
             </Button>
-          </form>
-        </CardFooter>
-      </Card>
-    </main>
+            <Button variant="ghost" asChild>
+            <Link href="/urunler">Ürünler</Link>
+            </Button>
+        </nav>
+
+        <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleNewChat}>
+                <FilePlus2 className="h-4 w-4 mr-2" />
+                Yeni Sohbet
+            </Button>
+            <Button variant="outline" size="icon" className="md:hidden" asChild>
+                <Link href="/urunler">
+                    <LayoutGrid className="h-5 w-5"/>
+                </Link>
+            </Button>
+        </div>
+      </header>
+
+      <main className="flex-1 flex items-center justify-center p-4">
+        <Card className="w-full max-w-3xl h-full flex flex-col shadow-2xl shadow-primary/10">
+          
+          <CardContent className="flex-1 overflow-hidden p-0">
+            <ScrollArea className="h-full" ref={scrollAreaRef}>
+              {messages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-center p-6">
+                  <Avatar className="h-20 w-20 mb-4 ring-2 ring-primary/20 p-1">
+                    <AvatarFallback className="bg-primary/10 text-primary w-full h-full flex items-center justify-center"><Bot size={40} /></AvatarFallback>
+                  </Avatar>
+                  <h2 className="text-2xl font-bold mb-2">Size nasıl yardımcı olabilirim?</h2>
+                  <p className="text-muted-foreground mb-6">Aşağıdaki örneklerden birini seçin veya kendi sorunuzu sorun.</p>
+                  
+                  <div className="flex flex-wrap justify-center gap-3 w-full">
+                    {suggestionPrompts.map((prompt, i) => (
+                      <Button 
+                        key={i} 
+                        variant="outline" 
+                        className="h-auto min-h-[3rem] px-4 py-2 text-center flex items-center justify-center text-sm"
+                        onClick={(e) => handleSubmit(e, prompt)}
+                        disabled={isLoading}
+                      >
+                        {prompt}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-6 p-6">
+                  {messages.map((message) => (
+                    <div key={message.id} className={`flex items-start gap-3 transition-all group ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      {message.role === 'bot' && (
+                        <Avatar className="h-8 w-8 shrink-0">
+                          <AvatarFallback className='bg-primary/10 text-primary w-full h-full flex items-center justify-center'><Bot size={18}/></AvatarFallback>
+                        </Avatar>
+                      )}
+                      
+                      <div className={`relative max-w-[80%] rounded-xl px-4 py-3 text-sm shadow-md ${message.role === 'user' ? 'bg-primary text-primary-foreground rounded-br-none' : 'bg-muted rounded-bl-none'}`}>
+                        {message.content === '...' ? <TypingIndicator /> : <p className="whitespace-pre-wrap">{message.content}</p>}
+                        
+                        {message.role === 'bot' && message.content !== '...' && (
+                           <Button onClick={() => handleCopy(message.content)} variant="ghost" size="icon" className="absolute -top-2 -right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Copy className="h-4 w-4 text-muted-foreground" />
+                           </Button>
+                        )}
+                      </div>
+
+                      {message.role === 'user' && <Avatar className="h-8 w-8 shrink-0"><AvatarFallback className='bg-muted-foreground/10 text-muted-foreground'><User size={18}/></AvatarFallback></Avatar>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </CardContent>
+          
+          <CardFooter className="border-t pt-4">
+            <form onSubmit={handleSubmit} className="flex w-full items-center gap-2">
+              <Input id="message" placeholder="Mesajınızı yazın..." className="flex-1 rounded-full focus-visible:ring-1 focus-visible:ring-primary focus-visible:ring-offset-0" autoComplete="off" value={input} onChange={(e) => setInput(e.target.value)} disabled={isLoading} />
+              <Button type="submit" size="icon" className="rounded-full shrink-0" disabled={isLoading || !input.trim()}>
+                <SendHorizontal size={20} />
+                <span className="sr-only">Gönder</span>
+              </Button>
+            </form>
+          </CardFooter>
+        </Card>
+      </main>
+    </div>
   );
 }
