@@ -10,8 +10,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { SendHorizontal, Bot, User, Copy, FilePlus2, LayoutGrid } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 
-// Gerekli kütüphane: npm install sonner (eğer yüklü değilse)
-
 // Mesaj tip tanımı
 interface Message {
   id: string;
@@ -21,9 +19,9 @@ interface Message {
 
 // Örnek soru butonları için arayüz
 const suggestionPrompts = [
-    "Bana en popüler ürünleri listele.",
-    "Geçen ayın satış raporunu özetle.",
-    "Yeni bir ürün için pazarlama sloganı önerir misin?",
+    "stoklardaki en ucuz ütüyü bul .",
+    "stoklardaki en pahalı ütüyü bul.",
+    "3000 ile 4000 tl arası ütüleri bul.",
 ];
 
 export default function ChatPage() {
@@ -32,6 +30,20 @@ export default function ChatPage() {
   const [isLoading, setIsLoading] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
+  // DÜZELTME: Session ID'yi saklamak için bir ref oluşturuyoruz.
+  const sessionIdRef = useRef<string | null>(null);
+
+  // DÜZELTME: Bu useEffect, sayfa ilk yüklendiğinde sadece bir kez çalışır
+  // ve her sohbet için benzersiz bir kimlik oluşturur/yükler.
+  useEffect(() => {
+    let sessionId = localStorage.getItem('chat_session_id');
+    if (!sessionId) {
+      sessionId = crypto.randomUUID();
+      localStorage.setItem('chat_session_id', sessionId);
+    }
+    sessionIdRef.current = sessionId;
+  }, []);
+
   // Otomatik kaydırma efekti
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -39,7 +51,7 @@ export default function ChatPage() {
       if (viewport) {
         setTimeout(() => {
           viewport.scrollTop = viewport.scrollHeight;
-        }, 100); 
+        }, 100);
       }
     }
   }, [messages]);
@@ -47,6 +59,10 @@ export default function ChatPage() {
   // Yeni sohbet başlatma fonksiyonu
   const handleNewChat = () => {
     setMessages([]);
+    // Yeni bir sohbet için yeni bir session_id oluştur
+    const newSessionId = crypto.randomUUID();
+    localStorage.setItem('chat_session_id', newSessionId);
+    sessionIdRef.current = newSessionId;
     toast.success("Yeni bir sohbet başlatıldı!");
   }
 
@@ -76,7 +92,11 @@ export default function ChatPage() {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: currentInput }),
+        // DÜZELTME: API isteğine session_id'yi de ekliyoruz.
+        body: JSON.stringify({
+          query: currentInput,
+          session_id: sessionIdRef.current
+        }),
       });
 
       if (!response.ok) throw new Error('API isteği başarısız oldu');
@@ -93,7 +113,7 @@ export default function ChatPage() {
       setIsLoading(false);
     }
   };
-  
+
   // Bot için "yazıyor..." animasyon bileşeni
   const TypingIndicator = () => (
     <div className="flex items-center space-x-1 p-2">
@@ -106,13 +126,13 @@ export default function ChatPage() {
   return (
     <div className="flex flex-col h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-blue-100 dark:from-gray-900 dark:via-indigo-950 dark:to-slate-900">
       <Toaster richColors position="top-right" />
-      
+
       <header className="sticky top-0 z-10 flex items-center justify-between p-4 border-b bg-background/80 backdrop-blur-sm">
         <div className="flex items-center gap-3">
           <Bot className="h-7 w-7 text-primary" />
           <h1 className="text-xl font-semibold tracking-tight">NPC-AI SATIŞ ASİSTANI</h1>
         </div>
-        
+
         <nav className="hidden md:flex items-center gap-2">
             <Button variant="ghost" asChild>
             <Link href="/">Sohbet</Link>
@@ -137,7 +157,7 @@ export default function ChatPage() {
 
       <main className="flex-1 flex items-center justify-center p-4">
         <Card className="w-full max-w-3xl h-full flex flex-col shadow-2xl shadow-primary/10">
-          
+
           <CardContent className="flex-1 overflow-hidden p-0">
             <ScrollArea className="h-full" ref={scrollAreaRef}>
               {messages.length === 0 ? (
@@ -147,12 +167,12 @@ export default function ChatPage() {
                   </Avatar>
                   <h2 className="text-2xl font-bold mb-2">Size nasıl yardımcı olabilirim?</h2>
                   <p className="text-muted-foreground mb-6">Aşağıdaki örneklerden birini seçin veya kendi sorunuzu sorun.</p>
-                  
+
                   <div className="flex flex-wrap justify-center gap-3 w-full">
                     {suggestionPrompts.map((prompt, i) => (
-                      <Button 
-                        key={i} 
-                        variant="outline" 
+                      <Button
+                        key={i}
+                        variant="outline"
                         className="h-auto min-h-[3rem] px-4 py-2 text-center flex items-center justify-center text-sm"
                         onClick={(e) => handleSubmit(e, prompt)}
                         disabled={isLoading}
@@ -171,10 +191,10 @@ export default function ChatPage() {
                           <AvatarFallback className='bg-primary/10 text-primary w-full h-full flex items-center justify-center'><Bot size={18}/></AvatarFallback>
                         </Avatar>
                       )}
-                      
+
                       <div className={`relative max-w-[80%] rounded-xl px-4 py-3 text-sm shadow-md ${message.role === 'user' ? 'bg-primary text-primary-foreground rounded-br-none' : 'bg-muted rounded-bl-none'}`}>
                         {message.content === '...' ? <TypingIndicator /> : <p className="whitespace-pre-wrap">{message.content}</p>}
-                        
+
                         {message.role === 'bot' && message.content !== '...' && (
                            <Button onClick={() => handleCopy(message.content)} variant="ghost" size="icon" className="absolute -top-2 -right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity">
                               <Copy className="h-4 w-4 text-muted-foreground" />
@@ -189,7 +209,7 @@ export default function ChatPage() {
               )}
             </ScrollArea>
           </CardContent>
-          
+
           <CardFooter className="border-t pt-4">
             <form onSubmit={handleSubmit} className="flex w-full items-center gap-2">
               <Input id="message" placeholder="Mesajınızı yazın..." className="flex-1 rounded-full focus-visible:ring-1 focus-visible:ring-primary focus-visible:ring-offset-0" autoComplete="off" value={input} onChange={(e) => setInput(e.target.value)} disabled={isLoading} />
