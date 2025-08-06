@@ -1,22 +1,20 @@
 "use client";
 
-import { FormEvent, useEffect } from 'react';
-import Link from 'next/link';
+import { useEffect, FormEvent } from 'react';
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { SendHorizontal, Bot, User, Copy, FilePlus2, LayoutGrid } from 'lucide-react';
+import { SendHorizontal, Bot, User, Copy, FilePlus2 } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
-import { ProductCard } from '@/components/product-card';
 import ReactMarkdown from 'react-markdown';
-// Vercel AI SDK'sından useChat hook'unu ve Message tipini import et
 import { useChat, type Message } from '@ai-sdk/react';
-// Benzersiz ID oluşturmak için uuid kütüphanesini import et
 import { v4 as uuidv4 } from 'uuid';
 
-// Örnek soru butonları için arayüz
+// ProductCard bileşenini import ettiğimizi varsayıyoruz
+import { ProductCard } from '@/components/product-card';
+
 const suggestionPrompts = [
     "stoklardaki en ucuz aspiratörü bul.",
     "stoklardaki en pahalı aspiratörü bul.",
@@ -24,10 +22,10 @@ const suggestionPrompts = [
 ];
 
 export default function ChatPage() {
-
-  // useChat hook'u, mesajları, input'u ve form gönderme işlemini otomatik olarak yönetir.
-  const { messages, input, handleInputChange, handleSubmit, setMessages, data, isLoading } = useChat({
-    // Her mesaj gönderildiğinde body'ye session_id ekle
+  const { messages, input, handleInputChange, handleSubmit, setMessages, append, isLoading } = useChat({
+    // API rotamızın yolunu belirtiyoruz.
+    api: '/api/chat',
+    // Her istekte chat_session_id'yi body'ye ekle
     body: {
       session_id: typeof window !== 'undefined' ?
         (localStorage.getItem('chat_session_id') || (() => {
@@ -35,33 +33,41 @@ export default function ChatPage() {
           localStorage.setItem('chat_session_id', newId);
           return newId;
         })())
-        : uuidv4(),
+        : '', // Sunucu tarafında boş string olarak ayarla
     },
     // Stream'den gelen özel verileri (product_context) işle
     onData: (data) => {
         try {
-            // Gelen veri "data: {...}" formatında olduğu için temizliyoruz
+            // Gelen veri "data: {...}" formatında olabilir, temizliyoruz.
+            // Bu formatta değilse bile, replace işlemi bir sorun yaratmaz.
             const jsonString = data.replace(/^data: /, '');
-            const parsedData = JSON.parse(jsonString);
 
-            if (parsedData.product_context) {
-                // Son mesaja ürün bilgisini ekle
-                setMessages(prevMessages => {
-                    const lastMessage = prevMessages[prevMessages.length - 1];
-                    if (lastMessage && lastMessage.role === 'assistant') {
-                        // `data` alanına product_context'i ekle
-                        const updatedLastMessage: Message = {
-                            ...lastMessage,
-                            data: parsedData.product_context,
-                        };
-                        return [...prevMessages.slice(0, -1), updatedLastMessage];
-                    }
-                    return prevMessages;
-                });
+            // Sadece tam bir JSON nesnesi ise ayrıştır.
+            if (jsonString.startsWith('{') && jsonString.endsWith('}')) {
+                const parsedData = JSON.parse(jsonString);
+
+                if (parsedData.product_context) {
+                    setMessages(prevMessages => {
+                        const lastMessage = prevMessages[prevMessages.length - 1];
+                        if (lastMessage && lastMessage.role === 'assistant') {
+                            const updatedLastMessage: Message = {
+                                ...lastMessage,
+                                data: parsedData.product_context,
+                            };
+                            return [...prevMessages.slice(0, -1), updatedLastMessage];
+                        }
+                        return prevMessages;
+                    });
+                }
             }
         } catch (error) {
             // Bu bir metin parçacığıdır, JSON değil. Hata olarak algılama.
+            // console.log("Gelen metin parçacığı:", data);
         }
+    },
+    // Hata durumunda kullanıcıya bildirim göster
+    onError: (error) => {
+        toast.error(`Bir hata oluştu: ${error.message}`);
     }
   });
 
@@ -71,12 +77,20 @@ export default function ChatPage() {
     const newSessionId = uuidv4();
     localStorage.setItem('chat_session_id', newSessionId);
     toast.success("Yeni bir sohbet başlatıldı!");
-  }
+  };
 
   // Mesajı panoya kopyalama fonksiyonu
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
     toast.success("Mesaj panoya kopyalandı!");
+  };
+
+  // Örnek soruya tıklandığında çalışacak fonksiyon
+  const handleSuggestionClick = (prompt: string) => {
+    append({
+      role: 'user',
+      content: prompt,
+    });
   };
 
   return (
@@ -107,10 +121,7 @@ export default function ChatPage() {
                   <p className="text-muted-foreground mb-6">Aşağıdaki örneklerden birini seçin veya kendi sorunuzu sorun.</p>
                   <div className="flex flex-wrap justify-center gap-3 w-full">
                     {suggestionPrompts.map((prompt, i) => (
-                      <Button key={i} variant="outline" className="h-auto" onClick={() => {
-                          const fakeEvent = { preventDefault: () => {} } as FormEvent;
-                          handleSubmit(fakeEvent, { data: { prompt } });
-                      }}>
+                      <Button key={i} variant="outline" className="h-auto" onClick={() => handleSuggestionClick(prompt)}>
                         {prompt}
                       </Button>
                     ))}
@@ -123,11 +134,12 @@ export default function ChatPage() {
                       {m.role === 'assistant' && (<Avatar className="h-8 w-8 shrink-0"><AvatarFallback className='bg-primary/10 text-primary'><Bot size={18}/></AvatarFallback></Avatar>)}
                       <div className={`prose dark:prose-invert max-w-full relative rounded-xl px-4 py-3 text-sm shadow-md ${m.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
                         <ReactMarkdown>{m.content}</ReactMarkdown>
+                        {/* Gelen özel veriyi ProductCard bileşeninde gösteriyoruz */}
                         {m.role === 'assistant' && m.data && (
                             <ProductCard product={m.data} />
                         )}
                         {m.role === 'assistant' && !isLoading && (
-                           <Button onClick={() => handleCopy(m.content)} variant="ghost" size="icon" className="absolute -top-2 -right-2 h-7 w-7 opacity-0 group-hover:opacity-100">
+                           <Button onClick={() => handleCopy(m.content)} variant="ghost" size="icon" className="absolute -top-2 -right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity">
                               <Copy className="h-4 w-4 text-muted-foreground" />
                            </Button>
                         )}
