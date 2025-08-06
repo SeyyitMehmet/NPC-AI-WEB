@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { StreamingTextResponse } from 'ai';
+// 'ai' yerine 'ai/rsc'den import ederek düzeltildi.
+import { StreamingTextResponse } from 'ai/rsc';
 
 // Bu, Vercel'in varsayılan zaman aşımı süresini uzatarak timeout hatalarını önler.
 export const maxDuration = 60;
