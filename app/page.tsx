@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, FormEvent } from 'react';
+import { FormEvent } from 'react';
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -23,9 +23,9 @@ const suggestionPrompts = [
 
 export default function ChatPage() {
   const { messages, input, handleInputChange, handleSubmit, setMessages, append, isLoading } = useChat({
-    // API rotamızın yolunu belirtiyoruz.
     api: '/api/chat',
-    // Her istekte chat_session_id'yi body'ye ekle
+    // AI SDK'ya stream içinde ek veri (data) geleceğini belirtiyoruz.
+    experimental_streamData: true,
     body: {
       session_id: typeof window !== 'undefined' ?
         (localStorage.getItem('chat_session_id') || (() => {
@@ -33,45 +33,13 @@ export default function ChatPage() {
           localStorage.setItem('chat_session_id', newId);
           return newId;
         })())
-        : '', // Sunucu tarafında boş string olarak ayarla
+        : '',
     },
-    // Stream'den gelen özel verileri (product_context) işle
-    onData: (data) => {
-        try {
-            // Gelen veri "data: {...}" formatında olabilir, temizliyoruz.
-            // Bu formatta değilse bile, replace işlemi bir sorun yaratmaz.
-            const jsonString = data.replace(/^data: /, '');
-
-            // Sadece tam bir JSON nesnesi ise ayrıştır.
-            if (jsonString.startsWith('{') && jsonString.endsWith('}')) {
-                const parsedData = JSON.parse(jsonString);
-
-                if (parsedData.product_context) {
-                    setMessages(prevMessages => {
-                        const lastMessage = prevMessages[prevMessages.length - 1];
-                        if (lastMessage && lastMessage.role === 'assistant') {
-                            const updatedLastMessage: Message = {
-                                ...lastMessage,
-                                data: parsedData.product_context,
-                            };
-                            return [...prevMessages.slice(0, -1), updatedLastMessage];
-                        }
-                        return prevMessages;
-                    });
-                }
-            }
-        } catch (error) {
-            // Bu bir metin parçacığıdır, JSON değil. Hata olarak algılama.
-            // console.log("Gelen metin parçacığı:", data);
-        }
-    },
-    // Hata durumunda kullanıcıya bildirim göster
     onError: (error) => {
         toast.error(`Bir hata oluştu: ${error.message}`);
     }
   });
 
-  // Yeni sohbet başlatma fonksiyonu
   const handleNewChat = () => {
     setMessages([]);
     const newSessionId = uuidv4();
@@ -79,13 +47,11 @@ export default function ChatPage() {
     toast.success("Yeni bir sohbet başlatıldı!");
   };
 
-  // Mesajı panoya kopyalama fonksiyonu
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
     toast.success("Mesaj panoya kopyalandı!");
   };
 
-  // Örnek soruya tıklandığında çalışacak fonksiyon
   const handleSuggestionClick = (prompt: string) => {
     append({
       role: 'user',
@@ -134,7 +100,7 @@ export default function ChatPage() {
                       {m.role === 'assistant' && (<Avatar className="h-8 w-8 shrink-0"><AvatarFallback className='bg-primary/10 text-primary'><Bot size={18}/></AvatarFallback></Avatar>)}
                       <div className={`prose dark:prose-invert max-w-full relative rounded-xl px-4 py-3 text-sm shadow-md ${m.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
                         <ReactMarkdown>{m.content}</ReactMarkdown>
-                        {/* Gelen özel veriyi ProductCard bileşeninde gösteriyoruz */}
+                        {/* Gelen özel veriyi (product_context) message.data'dan alıyoruz */}
                         {m.role === 'assistant' && m.data && (
                             <ProductCard product={m.data} />
                         )}
