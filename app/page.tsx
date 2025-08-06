@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { SendHorizontal, Bot, User, Copy, FilePlus2 } from 'lucide-react';
+import { SendHorizontal, Bot, User, Copy, FilePlus2, AlertTriangle } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 import ReactMarkdown from 'react-markdown';
 import { useChat, type Message } from '@ai-sdk/react';
@@ -22,13 +22,21 @@ const suggestionPrompts = [
 ];
 
 export default function ChatPage() {
-  // --- DÜZELTME ---
-  // API isteği artık doğrudan .env dosyasındaki Cloud Run URL'sine gönderiliyor.
-  // ÖNEMLİ: Next.js'te istemci tarafında bir ortam değişkenini kullanabilmek için
-  // adının 'NEXT_PUBLIC_' ile başlaması gerekir.
-  // Lütfen .env dosyanızdaki değişkeni 'NEXT_PUBLIC_CLOUD_RUN_API_URL' olarak güncelleyin.
+  // --- YENİ KONTROL ---
+  // Ortam değişkenini kodun başında bir değişkene atıyoruz.
+  const apiUrl = process.env.NEXT_PUBLIC_CLOUD_RUN_API_URL;
+
   const { messages, input, handleInputChange, handleSubmit, setMessages, append, isLoading } = useChat({
-    api: process.env.NEXT_PUBLIC_CLOUD_RUN_API_URL,
+    // API adresi sadece varsa kullanılır.
+    api: apiUrl,
+    // API adresi yoksa hook'u devre dışı bırakıyoruz.
+    // Bu, gereksiz hata mesajlarını engeller.
+    initialMessages: [],
+    // `useChat` hook'unu sadece apiUrl varsa etkinleştir.
+    // Bu satırı eklemek için `useChat`'in bu özelliği desteklediğini varsayıyoruz,
+    // eğer desteklemiyorsa bile yukarıdaki `api: apiUrl` kontrolü çoğu durumu halleder.
+    // Eğer hata alırsanız bu satırı silebilirsiniz.
+    // enabled: !!apiUrl,
     experimental_streamData: true,
     body: {
       session_id: typeof window !== 'undefined' ?
@@ -44,6 +52,34 @@ export default function ChatPage() {
     }
   });
 
+  // --- YENİ HATA DURUMU GÖSTERİMİ ---
+  // Eğer API adresi bulunamadıysa, sohbet arayüzü yerine bir hata mesajı göster.
+  if (!apiUrl) {
+    return (
+      <div className="flex flex-col h-screen items-center justify-center bg-red-50 dark:bg-red-900/10 p-4">
+        <Card className="w-full max-w-lg bg-background shadow-lg">
+          <CardContent className="p-6 text-center">
+            <div className="flex justify-center mb-4">
+              <AlertTriangle className="h-12 w-12 text-red-500" />
+            </div>
+            <h2 className="text-xl font-bold text-red-600 dark:text-red-400">Yapılandırma Hatası!</h2>
+            <p className="text-muted-foreground mt-2">
+              Uygulama, API sunucusunun adresini bulamadı.
+            </p>
+            <div className="mt-4 text-sm bg-slate-100 dark:bg-slate-800 p-3 rounded-md text-left">
+              <p className="font-semibold">Lütfen projenizin ana dizininde `.env.local` adında bir dosya oluşturup içine aşağıdaki satırı ekleyin:</p>
+              <code className="block bg-slate-200 dark:bg-slate-700 p-2 mt-2 rounded">
+                NEXT_PUBLIC_CLOUD_RUN_API_URL=https://akilli-satis-asistani-api-886151078461.europe-west1.run.app/chat
+              </code>
+              <p className="mt-2">Bu işlemi yaptıktan sonra geliştirme sunucusunu durdurup yeniden başlatmayı unutmayın.</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+
   const handleNewChat = () => {
     setMessages([]);
     const newSessionId = uuidv4();
@@ -57,7 +93,6 @@ export default function ChatPage() {
   };
 
   const handleSuggestionClick = (prompt: string) => {
-    // `append` fonksiyonu da artık doğru API adresine istek atacaktır.
     append({
       role: 'user',
       content: prompt,
