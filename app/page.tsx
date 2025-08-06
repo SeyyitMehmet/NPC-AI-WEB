@@ -1,20 +1,26 @@
 "use client";
 
-import { FormEvent } from 'react';
+import { useState, useRef, useEffect, FormEvent } from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { SendHorizontal, Bot, User, Copy, FilePlus2, AlertTriangle } from 'lucide-react';
+import { SendHorizontal, Bot, User, Copy, FilePlus2, LayoutGrid, AlertTriangle } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
-import ReactMarkdown from 'react-markdown';
-import { useChat, type Message } from '@ai-sdk/react';
-import { v4 as uuidv4 } from 'uuid';
-
-// ProductCard bileşenini import ettiğimizi varsayıyoruz
 import { ProductCard } from '@/components/product-card';
+import ReactMarkdown from 'react-markdown';
 
+// Mesaj tip tanımı
+interface Message {
+  id: string;
+  role: 'user' | 'bot';
+  content: string;
+  product_context?: any;
+}
+
+// Örnek soru butonları için arayüz
 const suggestionPrompts = [
     "stoklardaki en ucuz aspiratörü bul.",
     "stoklardaki en pahalı aspiratörü bul.",
@@ -22,38 +28,114 @@ const suggestionPrompts = [
 ];
 
 export default function ChatPage() {
-  // --- YENİ KONTROL ---
-  // Ortam değişkenini kodun başında bir değişkene atıyoruz.
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const sessionIdRef = useRef<string | null>(null);
+
+  // --- DÜZELTME: API URL'sini ortam değişkeninden oku ---
   const apiUrl = process.env.NEXT_PUBLIC_CLOUD_RUN_API_URL;
 
-  const { messages, input, handleInputChange, handleSubmit, setMessages, append, isLoading } = useChat({
-    // API adresi sadece varsa kullanılır.
-    api: apiUrl,
-    // API adresi yoksa hook'u devre dışı bırakıyoruz.
-    // Bu, gereksiz hata mesajlarını engeller.
-    initialMessages: [],
-    // `useChat` hook'unu sadece apiUrl varsa etkinleştir.
-    // Bu satırı eklemek için `useChat`'in bu özelliği desteklediğini varsayıyoruz,
-    // eğer desteklemiyorsa bile yukarıdaki `api: apiUrl` kontrolü çoğu durumu halleder.
-    // Eğer hata alırsanız bu satırı silebilirsiniz.
-    // enabled: !!apiUrl,
-    experimental_streamData: true,
-    body: {
-      session_id: typeof window !== 'undefined' ?
-        (localStorage.getItem('chat_session_id') || (() => {
-          const newId = uuidv4();
-          localStorage.setItem('chat_session_id', newId);
-          return newId;
-        })())
-        : '',
-    },
-    onError: (error) => {
-        toast.error(`Bir hata oluştu: ${error.message}`);
+  useEffect(() => {
+    let sessionId = localStorage.getItem('chat_session_id');
+    if (!sessionId) {
+      sessionId = crypto.randomUUID();
+      localStorage.setItem('chat_session_id', sessionId);
     }
-  });
+    sessionIdRef.current = sessionId;
+  }, []);
 
-  // --- YENİ HATA DURUMU GÖSTERİMİ ---
-  // Eğer API adresi bulunamadıysa, sohbet arayüzü yerine bir hata mesajı göster.
+  useEffect(() => {
+    if (scrollAreaRef.current) {
+      const viewport = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+      if (viewport) {
+        setTimeout(() => {
+          viewport.scrollTop = viewport.scrollHeight;
+        }, 100);
+      }
+    }
+  }, [messages]);
+
+  const handleNewChat = () => {
+    setMessages([]);
+    const newSessionId = crypto.randomUUID();
+    localStorage.setItem('chat_session_id', newSessionId);
+    sessionIdRef.current = newSessionId;
+    toast.success("Yeni bir sohbet başlatıldı!");
+  }
+
+  const handleCopy = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success("Mesaj panoya kopyalandı!");
+  };
+
+  const handleSubmit = async (e: FormEvent, prompt?: string) => {
+    e.preventDefault();
+
+    // API URL yoksa işlemi baştan engelle
+    if (!apiUrl) {
+        toast.error("API adresi yapılandırılmamış. Lütfen yönetici ile iletişime geçin.");
+        return;
+    }
+
+    const currentInput = prompt || input;
+    if (!currentInput.trim() || isLoading) return;
+
+    const userMessage: Message = { id: `user-${Date.now()}`, role: 'user', content: currentInput };
+    setMessages((prev) => [...prev, userMessage]);
+    if (!prompt) {
+        setInput('');
+    }
+    setIsLoading(true);
+
+    const loadingMessage: Message = { id: `bot-loading-${Date.now()}`, role: 'bot', content: '...' };
+    setMessages((prev) => [...prev, loadingMessage]);
+
+    try {
+      // --- DÜZELTME: fetch isteğini dinamik apiUrl'e gönder ---
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: currentInput,
+          session_id: sessionIdRef.current
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'API isteği başarısız oldu' }));
+        throw new Error(errorData.message || 'Bilinmeyen bir API hatası oluştu');
+      }
+
+      const data = await response.json();
+      const botResponse: Message = {
+        id: `bot-response-${Date.now()}`,
+        role: 'bot',
+        content: data.answer,
+        product_context: data.product_context
+      };
+
+      setMessages((prev) => prev.map(msg => msg.id === loadingMessage.id ? botResponse : msg));
+
+    } catch (error: any) {
+      console.error("Mesaj gönderilirken hata oluştu:", error);
+      const errorMessage: Message = { id: `error-${Date.now()}`, role: 'bot', content: `Üzgünüm, bir hata oluştu: ${error.message}` };
+      setMessages((prev) => prev.map(msg => msg.id === loadingMessage.id ? errorMessage : msg));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const TypingIndicator = () => (
+    <div className="flex items-center space-x-1 p-2">
+      <span className="h-2 w-2 animate-bounce rounded-full bg-slate-400 [animation-delay:-0.3s]" />
+      <span className="h-2 w-2 animate-bounce rounded-full bg-slate-400 [animation-delay:-0.15s]" />
+      <span className="h-2 w-2 animate-bounce rounded-full bg-slate-400" />
+    </div>
+  );
+
+  // --- DÜZELTME: API URL yoksa hata ekranı göster ---
   if (!apiUrl) {
     return (
       <div className="flex flex-col h-screen items-center justify-center bg-red-50 dark:bg-red-900/10 p-4">
@@ -69,7 +151,7 @@ export default function ChatPage() {
             <div className="mt-4 text-sm bg-slate-100 dark:bg-slate-800 p-3 rounded-md text-left">
               <p className="font-semibold">Lütfen projenizin ana dizininde `.env.local` adında bir dosya oluşturup içine aşağıdaki satırı ekleyin:</p>
               <code className="block bg-slate-200 dark:bg-slate-700 p-2 mt-2 rounded">
-                NEXT_PUBLIC_CLOUD_RUN_API_URL=https://akilli-satis-asistani-api-886151078461.europe-west1.run.app/chat
+                NEXT_PUBLIC_CLOUD_RUN_API_URL=https://api-adresiniz.com
               </code>
               <p className="mt-2">Bu işlemi yaptıktan sonra geliştirme sunucusunu durdurup yeniden başlatmayı unutmayın.</p>
             </div>
@@ -78,26 +160,6 @@ export default function ChatPage() {
       </div>
     );
   }
-
-
-  const handleNewChat = () => {
-    setMessages([]);
-    const newSessionId = uuidv4();
-    localStorage.setItem('chat_session_id', newSessionId);
-    toast.success("Yeni bir sohbet başlatıldı!");
-  };
-
-  const handleCopy = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast.success("Mesaj panoya kopyalandı!");
-  };
-
-  const handleSuggestionClick = (prompt: string) => {
-    append({
-      role: 'user',
-      content: prompt,
-    });
-  };
 
   return (
     <div className="flex flex-col h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-blue-100 dark:from-gray-900 dark:via-indigo-950 dark:to-slate-900">
@@ -108,26 +170,51 @@ export default function ChatPage() {
           <Bot className="h-7 w-7 text-primary" />
           <h1 className="text-xl font-semibold tracking-tight">NPC-AI SATIŞ ASİSTANI</h1>
         </div>
+
+        <nav className="hidden md:flex items-center gap-2">
+            <Button variant="ghost" asChild>
+            <Link href="/">Sohbet</Link>
+            </Button>
+            <Button variant="ghost" asChild>
+            <Link href="/urunler">Ürünler</Link>
+            </Button>
+        </nav>
+
         <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={handleNewChat}>
                 <FilePlus2 className="h-4 w-4 mr-2" />
                 Yeni Sohbet
+            </Button>
+            <Button variant="outline" size="icon" className="md:hidden" asChild>
+                <Link href="/urunler">
+                    <LayoutGrid className="h-5 w-5"/>
+                </Link>
             </Button>
         </div>
       </header>
 
       <main className="flex-1 flex items-center justify-center p-4">
         <Card className="w-full max-w-3xl h-full flex flex-col shadow-2xl shadow-primary/10">
+
           <CardContent className="flex-1 overflow-hidden p-0">
-            <ScrollArea className="h-full">
+            <ScrollArea className="h-full" ref={scrollAreaRef}>
               {messages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-center p-6">
-                  <Avatar className="h-20 w-20 mb-4 ring-2 ring-primary/20 p-1"><AvatarFallback className="bg-primary/10 text-primary w-full h-full flex items-center justify-center"><Bot size={40} /></AvatarFallback></Avatar>
+                  <Avatar className="h-20 w-20 mb-4 ring-2 ring-primary/20 p-1">
+                    <AvatarFallback className="bg-primary/10 text-primary w-full h-full flex items-center justify-center"><Bot size={40} /></AvatarFallback>
+                  </Avatar>
                   <h2 className="text-2xl font-bold mb-2">Size nasıl yardımcı olabilirim?</h2>
                   <p className="text-muted-foreground mb-6">Aşağıdaki örneklerden birini seçin veya kendi sorunuzu sorun.</p>
+
                   <div className="flex flex-wrap justify-center gap-3 w-full">
                     {suggestionPrompts.map((prompt, i) => (
-                      <Button key={i} variant="outline" className="h-auto" onClick={() => handleSuggestionClick(prompt)}>
+                      <Button
+                        key={i}
+                        variant="outline"
+                        className="h-auto min-h-[3rem] px-4 py-2 text-center flex items-center justify-center text-sm"
+                        onClick={(e) => handleSubmit(e, prompt)}
+                        disabled={isLoading}
+                      >
                         {prompt}
                       </Button>
                     ))}
@@ -135,21 +222,37 @@ export default function ChatPage() {
                 </div>
               ) : (
                 <div className="space-y-6 p-6">
-                  {messages.map((m) => (
-                    <div key={m.id} className={`flex items-start gap-3 group ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      {m.role === 'assistant' && (<Avatar className="h-8 w-8 shrink-0"><AvatarFallback className='bg-primary/10 text-primary'><Bot size={18}/></AvatarFallback></Avatar>)}
-                      <div className={`prose dark:prose-invert max-w-full relative rounded-xl px-4 py-3 text-sm shadow-md ${m.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
-                        <ReactMarkdown>{m.content}</ReactMarkdown>
-                        {m.role === 'assistant' && m.data && (
-                            <ProductCard product={m.data} />
+                  {messages.map((message) => (
+                    <div key={message.id} className={`flex items-start gap-3 transition-all group ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      {message.role === 'bot' && (
+                        <Avatar className="h-8 w-8 shrink-0">
+                          <AvatarFallback className='bg-primary/10 text-primary w-full h-full flex items-center justify-center'><Bot size={18}/></AvatarFallback>
+                        </Avatar>
+                      )}
+
+                      <div className={`prose dark:prose-invert max-w-full relative rounded-xl px-4 py-3 text-sm shadow-md ${message.role === 'user' ? 'bg-primary text-primary-foreground rounded-br-none' : 'bg-muted rounded-bl-none'}`}>
+                        {message.content === '...' ? <TypingIndicator /> : (
+                          <ReactMarkdown
+                            components={{
+                              p: ({node, ...props}) => <p className="mb-0" {...props} />
+                            }}
+                          >
+                            {message.content}
+                          </ReactMarkdown>
                         )}
-                        {m.role === 'assistant' && !isLoading && (
-                           <Button onClick={() => handleCopy(m.content)} variant="ghost" size="icon" className="absolute -top-2 -right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity">
+
+                        {message.product_context && (
+                            <ProductCard product={message.product_context} />
+                        )}
+
+                        {message.role === 'bot' && message.content !== '...' && (
+                           <Button onClick={() => handleCopy(message.content)} variant="ghost" size="icon" className="absolute -top-2 -right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity">
                               <Copy className="h-4 w-4 text-muted-foreground" />
                            </Button>
                         )}
                       </div>
-                      {m.role === 'user' && <Avatar className="h-8 w-8 shrink-0"><AvatarFallback className='bg-muted-foreground/10'><User size={18}/></AvatarFallback></Avatar>}
+
+                      {message.role === 'user' && <Avatar className="h-8 w-8 shrink-0"><AvatarFallback className='bg-muted-foreground/10 text-muted-foreground'><User size={18}/></AvatarFallback></Avatar>}
                     </div>
                   ))}
                 </div>
@@ -159,19 +262,10 @@ export default function ChatPage() {
 
           <CardFooter className="border-t pt-4">
             <form onSubmit={handleSubmit} className="flex w-full items-center gap-2">
-              <Input
-                placeholder="Mesajınızı yazın..."
-                className="flex-1"
-                value={input}
-                onChange={handleInputChange}
-              />
-              <Button
-                type="submit"
-                size="icon"
-                className="shrink-0"
-                disabled={isLoading || !input?.trim()}
-              >
+              <Input id="message" placeholder="Mesajınızı yazın..." className="flex-1 rounded-full focus-visible:ring-1 focus-visible:ring-primary focus-visible:ring-offset-0" autoComplete="off" value={input} onChange={(e) => setInput(e.target.value)} disabled={isLoading} />
+              <Button type="submit" size="icon" className="rounded-full shrink-0" disabled={isLoading || !input.trim()}>
                 <SendHorizontal size={20} />
+                <span className="sr-only">Gönder</span>
               </Button>
             </form>
           </CardFooter>
