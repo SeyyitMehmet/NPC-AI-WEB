@@ -58,16 +58,22 @@ export default function ChatPage() {
     });
   };
 
-  // DÜZELTME: Form gönderme işlemini yönetmek için bir ara fonksiyon oluşturuldu.
-  const handleFormSubmit = (e: FormEvent<HTMLFormElement>) => {
-    // Formun varsayılan yenileme davranışını engelle
-    e.preventDefault();
-    // Girdi boşsa veya yükleme devam ediyorsa bir şey yapma
+  // DÜZELTME: Mesaj gönderme mantığı doğrudan bu fonksiyona bağlandı.
+  const handleSendMessage = () => {
     if (isLoading || !input?.trim()) {
       return;
     }
-    // useChat'in handleSubmit fonksiyonunu çağırarak mesajı gönder
-    handleSubmit(e);
+    // `handleSubmit` fonksiyonu, bir event nesnesi olmadan da çağrılabilir.
+    // Bu şekilde çağrıldığında mevcut 'input' değerini kullanarak gönderim yapar.
+    handleSubmit();
+  };
+
+  // DÜZELTME: Klavyeden 'Enter' tuşuna basıldığında da mesaj gönderilmesini sağlar.
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault(); // Input'ta yeni satır oluşmasını engelle
+      handleSendMessage();
+    }
   };
 
   return (
@@ -129,13 +135,25 @@ export default function ChatPage() {
           </CardContent>
 
           <CardFooter className="border-t pt-4">
-            {/* DÜZELTME: Form onSubmit, yeni ara fonksiyonu çağırıyor. */}
-            <form onSubmit={handleFormSubmit} className="flex w-full items-center gap-2">
-              <Input placeholder="Mesajınızı yazın..." className="flex-1" value={input} onChange={handleInputChange} />
-              <Button type="submit" size="icon" className="shrink-0" disabled={isLoading || !input?.trim()}>
+            {/* DÜZELTME: Form etiketi kaldırıldı, gönderim input ve butondan yönetiliyor. */}
+            <div className="flex w-full items-center gap-2">
+              <Input
+                placeholder="Mesajınızı yazın..."
+                className="flex-1"
+                value={input}
+                onChange={handleInputChange}
+                onKeyDown={handleKeyDown}
+              />
+              <Button
+                type="button"
+                size="icon"
+                className="shrink-0"
+                disabled={isLoading || !input?.trim()}
+                onClick={handleSendMessage}
+              >
                 <SendHorizontal size={20} />
               </Button>
-            </form>
+            </div>
           </CardFooter>
         </Card>
       </main>
