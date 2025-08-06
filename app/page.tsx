@@ -58,6 +58,18 @@ export default function ChatPage() {
     });
   };
 
+  // DÜZELTME: Form gönderme işlemini yönetmek için bir ara fonksiyon oluşturuldu.
+  const handleFormSubmit = (e: FormEvent<HTMLFormElement>) => {
+    // Formun varsayılan yenileme davranışını engelle
+    e.preventDefault();
+    // Girdi boşsa veya yükleme devam ediyorsa bir şey yapma
+    if (isLoading || !input?.trim()) {
+      return;
+    }
+    // useChat'in handleSubmit fonksiyonunu çağırarak mesajı gönder
+    handleSubmit(e);
+  };
+
   return (
     <div className="flex flex-col h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-blue-100 dark:from-gray-900 dark:via-indigo-950 dark:to-slate-900">
       <Toaster richColors position="top-right" />
@@ -117,9 +129,9 @@ export default function ChatPage() {
           </CardContent>
 
           <CardFooter className="border-t pt-4">
-            <form onSubmit={handleSubmit} className="flex w-full items-center gap-2">
+            {/* DÜZELTME: Form onSubmit, yeni ara fonksiyonu çağırıyor. */}
+            <form onSubmit={handleFormSubmit} className="flex w-full items-center gap-2">
               <Input placeholder="Mesajınızı yazın..." className="flex-1" value={input} onChange={handleInputChange} />
-              {/* DÜZELTME: Optional chaining (?.) ile hem build hatası hem de boşluk gönderme sorunu çözüldü. */}
               <Button type="submit" size="icon" className="shrink-0" disabled={isLoading || !input?.trim()}>
                 <SendHorizontal size={20} />
               </Button>
