@@ -58,24 +58,6 @@ export default function ChatPage() {
     });
   };
 
-  // DÜZELTME: Mesaj gönderme mantığı doğrudan bu fonksiyona bağlandı.
-  const handleSendMessage = () => {
-    if (isLoading || !input?.trim()) {
-      return;
-    }
-    // `handleSubmit` fonksiyonu, bir event nesnesi olmadan da çağrılabilir.
-    // Bu şekilde çağrıldığında mevcut 'input' değerini kullanarak gönderim yapar.
-    handleSubmit();
-  };
-
-  // DÜZELTME: Klavyeden 'Enter' tuşuna basıldığında da mesaj gönderilmesini sağlar.
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault(); // Input'ta yeni satır oluşmasını engelle
-      handleSendMessage();
-    }
-  };
-
   return (
     <div className="flex flex-col h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-blue-100 dark:from-gray-900 dark:via-indigo-950 dark:to-slate-900">
       <Toaster richColors position="top-right" />
@@ -135,25 +117,23 @@ export default function ChatPage() {
           </CardContent>
 
           <CardFooter className="border-t pt-4">
-            {/* DÜZELTME: Form etiketi kaldırıldı, gönderim input ve butondan yönetiliyor. */}
-            <div className="flex w-full items-center gap-2">
+            {/* DÜZELTME: Standart form yapısına geri dönüldü. */}
+            <form onSubmit={handleSubmit} className="flex w-full items-center gap-2">
               <Input
                 placeholder="Mesajınızı yazın..."
                 className="flex-1"
                 value={input}
                 onChange={handleInputChange}
-                onKeyDown={handleKeyDown}
               />
               <Button
-                type="button"
+                type="submit"
                 size="icon"
                 className="shrink-0"
                 disabled={isLoading || !input?.trim()}
-                onClick={handleSendMessage}
               >
                 <SendHorizontal size={20} />
               </Button>
-            </div>
+            </form>
           </CardFooter>
         </Card>
       </main>
