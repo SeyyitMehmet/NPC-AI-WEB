@@ -22,8 +22,13 @@ const suggestionPrompts = [
 ];
 
 export default function ChatPage() {
+  // --- DÜZELTME ---
+  // API isteği artık doğrudan .env dosyasındaki Cloud Run URL'sine gönderiliyor.
+  // ÖNEMLİ: Next.js'te istemci tarafında bir ortam değişkenini kullanabilmek için
+  // adının 'NEXT_PUBLIC_' ile başlaması gerekir.
+  // Lütfen .env dosyanızdaki değişkeni 'NEXT_PUBLIC_CLOUD_RUN_API_URL' olarak güncelleyin.
   const { messages, input, handleInputChange, handleSubmit, setMessages, append, isLoading } = useChat({
-    api: '/api/chat',
+    api: process.env.NEXT_PUBLIC_CLOUD_RUN_API_URL,
     experimental_streamData: true,
     body: {
       session_id: typeof window !== 'undefined' ?
@@ -52,6 +57,7 @@ export default function ChatPage() {
   };
 
   const handleSuggestionClick = (prompt: string) => {
+    // `append` fonksiyonu da artık doğru API adresine istek atacaktır.
     append({
       role: 'user',
       content: prompt,
@@ -117,7 +123,6 @@ export default function ChatPage() {
           </CardContent>
 
           <CardFooter className="border-t pt-4">
-            {/* DÜZELTME: Standart form yapısına geri dönüldü. */}
             <form onSubmit={handleSubmit} className="flex w-full items-center gap-2">
               <Input
                 placeholder="Mesajınızı yazın..."
