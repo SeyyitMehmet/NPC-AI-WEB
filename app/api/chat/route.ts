@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { StreamingTextResponse } from 'ai';
+import { useChat, type Message } from '@ai-sdk/react';
 
 // Bu, Vercel'in varsayılan zaman aşımı süresini uzatarak timeout hatalarını önler.
 export const maxDuration = 60;
