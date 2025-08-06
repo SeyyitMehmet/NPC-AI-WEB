@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { SendHorizontal, Bot, User, Copy, FilePlus2, LayoutGrid, AlertTriangle } from 'lucide-react';
+import { SendHorizontal, Bot, User, Copy, FilePlus2, LayoutGrid, AlertTriangle, Loader2 } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 import { ProductCard } from '@/components/product-card';
 import ReactMarkdown from 'react-markdown';
@@ -27,6 +27,35 @@ const suggestionPrompts = [
     "stoklardaki en pahalı aspiratörü bul.",
     "3000 ile 4000 tl arası aspiratörleri bul.",
 ];
+
+// --- YENİ BİLEŞEN: Daktilo efektiyle metin gösterimi ---
+const AnimatedResponseMessage = ({ message }: { message: Message }) => {
+  const [displayedContent, setDisplayedContent] = useState('');
+
+  useEffect(() => {
+    // Mesaj tamamlanmadıysa ve yeni içerik geldiyse animasyonu başlat/devam et
+    if (!message.isComplete && displayedContent.length < message.content.length) {
+      const timeout = setTimeout(() => {
+        setDisplayedContent(message.content.substring(0, displayedContent.length + 1));
+      }, 20); // Yazma hızı (ms)
+      return () => clearTimeout(timeout);
+    } else if (message.isComplete) {
+      // Mesaj tamamlandıysa, tüm içeriğin gösterildiğinden emin ol
+      setDisplayedContent(message.content);
+    }
+  }, [message.content, displayedContent, message.isComplete]);
+
+  return <ReactMarkdown>{displayedContent}</ReactMarkdown>;
+};
+
+// --- YENİ BİLEŞEN: Cevap üretilirken gösterilecek animasyon ---
+const GeneratingResponseIndicator = () => (
+  <div className="flex items-center space-x-2 text-sm text-muted-foreground p-2">
+    <Loader2 className="h-4 w-4 animate-spin" />
+    <span>Sizin için en iyi cevabı üretiyoruz...</span>
+  </div>
+);
+
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -72,7 +101,6 @@ export default function ChatPage() {
 
     // Bot için geçici bir 'yazıyor' mesajı ekle
     const assistantId = `assistant-${Date.now()}`;
-    // --- DÜZELTME: Mesajın tamamlanmadığını belirt ---
     const assistantMessage: Message = { id: assistantId, role: 'assistant', content: '', isComplete: false };
     setMessages((prev) => [...prev, assistantMessage]);
 
@@ -140,7 +168,7 @@ export default function ChatPage() {
         }
       }
 
-      // --- DÜZELTME: Akış bittiğinde mesajı tamamlandı olarak işaretle ---
+      // Akış bittiğinde mesajı tamamlandı olarak işaretle
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === assistantId ? { ...msg, isComplete: true } : msg
@@ -212,11 +240,18 @@ export default function ChatPage() {
                     <div key={m.id} className={`flex items-start gap-3 group ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                       {m.role === 'assistant' && (<Avatar className="h-8 w-8 shrink-0"><AvatarFallback className='bg-primary/10 text-primary'><Bot size={18}/></AvatarFallback></Avatar>)}
                       <div className={`prose dark:prose-invert max-w-full relative rounded-xl px-4 py-3 text-sm shadow-md ${m.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
-                        {isLoading && m.role === 'assistant' && !m.isComplete ? '...' : <ReactMarkdown>{m.content}</ReactMarkdown>}
 
-                        {/* --- DÜZELTME: Kartı sadece mesaj tamamlandığında göster --- */}
+                        {/* --- DÜZELTME: Gelişmiş Yükleme ve Gösterim Mantığı --- */}
+                        {m.role === 'assistant' && !m.content && !m.isComplete ? (
+                          <GeneratingResponseIndicator />
+                        ) : (
+                          <AnimatedResponseMessage message={m} />
+                        )}
+
+                        {/* Kartı sadece mesaj tamamlandığında göster */}
                         {m.data && m.isComplete && <ProductCard product={m.data} />}
 
+                        {/* Kopyala butonu sadece mesaj tamamlandığında gösterilir */}
                         {m.role === 'assistant' && m.isComplete && (
                            <Button onClick={() => handleCopy(m.content)} variant="ghost" size="icon" className="absolute -top-2 -right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"><Copy className="h-4 w-4 text-muted-foreground" /></Button>
                         )}
