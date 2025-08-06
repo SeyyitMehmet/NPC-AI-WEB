@@ -12,7 +12,7 @@ import { toast, Toaster } from 'sonner';
 import { ProductCard } from '@/components/product-card';
 import ReactMarkdown from 'react-markdown';
 // Vercel AI SDK'sından useChat hook'unu ve Message tipini import et
-import { useChat, type Message } from 'ai/react';
+import { useChat, type Message } from '@ai-sdk/react';
 // Benzersiz ID oluşturmak için uuid kütüphanesini import et
 import { v4 as uuidv4 } from 'uuid';
 
