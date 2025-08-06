@@ -19,6 +19,7 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   data?: any; // API'den gelen ürün verisi (product_context) için
+  isComplete?: boolean; // Akışın tamamlanıp tamamlanmadığını takip eder
 }
 
 const suggestionPrompts = [
@@ -71,7 +72,8 @@ export default function ChatPage() {
 
     // Bot için geçici bir 'yazıyor' mesajı ekle
     const assistantId = `assistant-${Date.now()}`;
-    const assistantMessage: Message = { id: assistantId, role: 'assistant', content: '' };
+    // --- DÜZELTME: Mesajın tamamlanmadığını belirt ---
+    const assistantMessage: Message = { id: assistantId, role: 'assistant', content: '', isComplete: false };
     setMessages((prev) => [...prev, assistantMessage]);
 
     try {
@@ -100,7 +102,7 @@ export default function ChatPage() {
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) break; // Akış bittiğinde döngüden çık
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
@@ -120,13 +122,11 @@ export default function ChatPage() {
               let newData = msg.data;
 
               if (prefix === '0:') { // Ürün verisi
-                try {
-                  newData = JSON.parse(payload);
-                } catch (e) { console.error("Veri (0:) parse edilemedi:", payload); }
+                try { newData = JSON.parse(payload); }
+                catch (e) { console.error("Veri (0:) parse edilemedi:", payload); }
               } else if (prefix === '1:') { // Metin akışı
-                try {
-                  newContent += JSON.parse(payload);
-                } catch (e) { console.error("Metin (1:) parse edilemedi:", payload); }
+                try { newContent += JSON.parse(payload); }
+                catch (e) { console.error("Metin (1:) parse edilemedi:", payload); }
               } else if (prefix === '2:') { // Hata
                  try {
                   const errorJson = JSON.parse(payload);
@@ -140,12 +140,19 @@ export default function ChatPage() {
         }
       }
 
+      // --- DÜZELTME: Akış bittiğinde mesajı tamamlandı olarak işaretle ---
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantId ? { ...msg, isComplete: true } : msg
+        )
+      );
+
     } catch (error: any) {
       console.error("Mesaj gönderilirken hata oluştu:", error);
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === assistantId
-            ? { ...msg, content: `Üzgünüm, bir hata oluştu: ${error.message}` }
+            ? { ...msg, content: `Üzgünüm, bir hata oluştu: ${error.message}`, isComplete: true }
             : msg
         )
       );
@@ -205,9 +212,12 @@ export default function ChatPage() {
                     <div key={m.id} className={`flex items-start gap-3 group ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                       {m.role === 'assistant' && (<Avatar className="h-8 w-8 shrink-0"><AvatarFallback className='bg-primary/10 text-primary'><Bot size={18}/></AvatarFallback></Avatar>)}
                       <div className={`prose dark:prose-invert max-w-full relative rounded-xl px-4 py-3 text-sm shadow-md ${m.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
-                        {isLoading && m.role === 'assistant' && m.content === '' ? '...' : <ReactMarkdown>{m.content}</ReactMarkdown>}
-                        {m.data && <ProductCard product={m.data} />}
-                        {m.role === 'assistant' && !isLoading && (
+                        {isLoading && m.role === 'assistant' && !m.isComplete ? '...' : <ReactMarkdown>{m.content}</ReactMarkdown>}
+
+                        {/* --- DÜZELTME: Kartı sadece mesaj tamamlandığında göster --- */}
+                        {m.data && m.isComplete && <ProductCard product={m.data} />}
+
+                        {m.role === 'assistant' && m.isComplete && (
                            <Button onClick={() => handleCopy(m.content)} variant="ghost" size="icon" className="absolute -top-2 -right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"><Copy className="h-4 w-4 text-muted-foreground" /></Button>
                         )}
                       </div>
