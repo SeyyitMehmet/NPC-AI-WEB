@@ -119,8 +119,8 @@ export default function ChatPage() {
           <CardFooter className="border-t pt-4">
             <form onSubmit={handleSubmit} className="flex w-full items-center gap-2">
               <Input placeholder="Mesajınızı yazın..." className="flex-1" value={input} onChange={handleInputChange} />
-              {/* DÜZELTME: 'input' değişkeni kontrol edilerek trim hatası önlendi. */}
-              <Button type="submit" size="icon" className="shrink-0" disabled={isLoading || !input}>
+              {/* DÜZELTME: Optional chaining (?.) ile hem build hatası hem de boşluk gönderme sorunu çözüldü. */}
+              <Button type="submit" size="icon" className="shrink-0" disabled={isLoading || !input?.trim()}>
                 <SendHorizontal size={20} />
               </Button>
             </form>
