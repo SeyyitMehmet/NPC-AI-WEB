@@ -24,7 +24,6 @@ const suggestionPrompts = [
 export default function ChatPage() {
   const { messages, input, handleInputChange, handleSubmit, setMessages, append, isLoading } = useChat({
     api: '/api/chat',
-    // AI SDK'ya stream içinde ek veri (data) geleceğini belirtiyoruz.
     experimental_streamData: true,
     body: {
       session_id: typeof window !== 'undefined' ?
@@ -100,7 +99,6 @@ export default function ChatPage() {
                       {m.role === 'assistant' && (<Avatar className="h-8 w-8 shrink-0"><AvatarFallback className='bg-primary/10 text-primary'><Bot size={18}/></AvatarFallback></Avatar>)}
                       <div className={`prose dark:prose-invert max-w-full relative rounded-xl px-4 py-3 text-sm shadow-md ${m.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
                         <ReactMarkdown>{m.content}</ReactMarkdown>
-                        {/* Gelen özel veriyi (product_context) message.data'dan alıyoruz */}
                         {m.role === 'assistant' && m.data && (
                             <ProductCard product={m.data} />
                         )}
@@ -121,7 +119,8 @@ export default function ChatPage() {
           <CardFooter className="border-t pt-4">
             <form onSubmit={handleSubmit} className="flex w-full items-center gap-2">
               <Input placeholder="Mesajınızı yazın..." className="flex-1" value={input} onChange={handleInputChange} />
-              <Button type="submit" size="icon" className="shrink-0" disabled={isLoading || !input.trim()}>
+              {/* DÜZELTME: 'input' değişkeni kontrol edilerek trim hatası önlendi. */}
+              <Button type="submit" size="icon" className="shrink-0" disabled={isLoading || !input}>
                 <SendHorizontal size={20} />
               </Button>
             </form>
